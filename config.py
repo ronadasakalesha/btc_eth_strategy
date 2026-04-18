@@ -58,13 +58,22 @@ ACTIVE_SESSIONS = [
 SKIP_WEEKEND = True            # Skip Saturday/Sunday entries
 
 # ─── Signal Confluence ────────────────────────────────────────────────────────
-# Minimum score (out of 1.0) to trigger a trade
-LONG_THRESHOLD  = 0.58
-SHORT_THRESHOLD = 0.58
+# Minimum score (out of 1.0) to trigger a trade.
+# ASYMMETRIC: longs require higher confluence (longs at 52% WR — filter harder).
+#             shorts demonstrated 68% WR so a lower bar gets us more of them.
+LONG_THRESHOLD  = 0.63   # was 0.58 — filters weaker long setups
+SHORT_THRESHOLD = 0.58   # restored — 0.54 let in weak shorts (50% WR vs 68% at 0.58)
 
 # Minimum bars between consecutive signals (prevents over-trading)
-# 8 bars × 15m = 2 hours minimum between entries
-MIN_SIGNAL_GAP_BARS = 8
+# 8 bars x 15m = 2 hours minimum between entries
+MIN_SIGNAL_GAP_BARS = 4   # 4×15m = 1-hour minimum gap; targets 35-40 trades/90d
+
+# RSI guard rails applied ONLY to long entries (not shorts).
+# Longs on overbought RSI (>65) or pre-momentum RSI (<45) are the
+# primary driver of the 52% long win rate.
+LONG_RSI_MIN = 45    # RSI must be above this — confirms momentum exists
+LONG_RSI_MAX = 65    # RSI must be below this — avoids overbought exhaustion
+
 
 # Feature weights — must sum to 1.0 (weights are auto-normalised).
 # ONLY include features that return values in {-1, 0, +1}.
@@ -87,14 +96,14 @@ FEATURE_WEIGHTS = {
     "cvd_divergence":  0.04,
 
     # Structure layer (28%)
-    "vwap_signal":     0.12,   # FIX: was "vwap_position" (wrong key — column is "vwap_signal")
-    "order_block":     0.09,
+    "vwap_signal":      0.13,  # +0.01 from cross-asset redistribution
+    "order_block":      0.10,  # +0.01 from cross-asset redistribution
     "choch_bos":       0.07,
 
     # Cross-asset / OI (8%)
     "oi_confirm":      0.04,
-    "btcd_gate":       0.02,
-    "ethbtc_momentum": 0.02,
+    "btcd_gate":        0.01,  # reduced — over-weighting ETH score
+    "ethbtc_momentum":  0.01,  # reduced — causing ETH negative corr
 }
 
 # ─── Trade Management ─────────────────────────────────────────────────────────

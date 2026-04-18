@@ -160,11 +160,28 @@ def generate_signals(
         if not _hard_gate_open(row):
             continue
 
+        # Structure confirmation gate — at least one structure feature must be active.
+        # Prevents signals driven purely by trend/momentum features with no structural
+        # anchor. Targets the ETH negative score correlation (cross-asset features
+        # inflating scores on structurally weak setups).
+        structure_active = any(
+            abs(float(row.get(f, 0) or 0)) > 0
+            for f in ("vwap_signal", "order_block", "choch_bos", "fvg")  # fvg added v8
+        )
+        if not structure_active:
+            continue
+
         bull, bear = score_bar(row)
         entry = primary_df.loc[ts, "close"]
         atr   = atr_series.loc[ts]
 
         if bull >= long_thresh:
+            # RSI guard rail — longs only.
+            # Skip if RSI is overbought (exhaustion) or below momentum floor.
+            # RSI column is raw (0-100), not in FEATURE_WEIGHTS — safe to read directly.
+            rsi_val = row.get("rsi", 50.0)
+            if not (cfg.LONG_RSI_MIN <= rsi_val <= cfg.LONG_RSI_MAX):
+                continue
             sl = entry - atr_mult_sl * atr
             tp = entry + atr_mult_tp * atr
             signals.append(TradeSignal(
