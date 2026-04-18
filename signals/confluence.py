@@ -88,6 +88,11 @@ def score_bar(row: pd.Series) -> tuple[float, float]:
     """
     Compute (bull_score, bear_score) for a single bar's feature row.
     Scores are in [0, 1].
+
+    All feature values are clamped to [-1, 1] before weighting.
+    This prevents raw-value features (market_regime=2, atr_percentile=65)
+    from inflating the score. Only {-1, 0, +1} features belong in WEIGHTS,
+    but the clamp is a hard safety net.
     """
     bull = 0.0
     bear = 0.0
@@ -97,6 +102,7 @@ def score_bar(row: pd.Series) -> tuple[float, float]:
         v = row[feat]
         if pd.isna(v):
             continue
+        v = float(max(-1.0, min(1.0, v)))   # clamp: raw values must not inflate score
         if v > 0:
             bull += w * v
         elif v < 0:
@@ -119,12 +125,14 @@ def generate_signals(
     atr_mult_tp: float = cfg.ATR_TP_MULT,
     long_thresh: float = cfg.LONG_THRESHOLD,
     short_thresh: float = cfg.SHORT_THRESHOLD,
+    min_gap_bars: int = cfg.MIN_SIGNAL_GAP_BARS,
 ) -> list[TradeSignal]:
     """
     Walk through every bar, compute the confluence score, and emit
     TradeSignal objects when thresholds are met.
 
-    ATR is computed here for SL/TP placement.
+    FIX: skip_until is now index-based (integer position), not timestamp-based.
+    The old ts-based approach blocked nothing because the next bar's ts > ts.
     """
     prev_close = primary_df["close"].shift(1)
     tr = pd.concat([
@@ -135,15 +143,19 @@ def generate_signals(
     atr_series = tr.ewm(alpha=1/cfg.ATR_PERIOD, adjust=False).mean()
 
     signals: list[TradeSignal] = []
-    skip_until: pd.Timestamp | None = None
+    next_allowed_idx: int = cfg.WARM_UP_BARS   # index-based cooldown
 
-    for ts, row in features_df.iterrows():
+    index_list = features_df.index.tolist()
+
+    for i, ts in enumerate(index_list):
         # Skip warm-up period
-        if ts < features_df.index[cfg.WARM_UP_BARS]:
+        if i < cfg.WARM_UP_BARS:
             continue
-        # Skip if we're in an open trade (simple: skip until next bar)
-        if skip_until and ts <= skip_until:
+        # FIX: index-based gap — blocks next min_gap_bars bars after any signal
+        if i < next_allowed_idx:
             continue
+
+        row = features_df.iloc[i]
 
         if not _hard_gate_open(row):
             continue
@@ -161,7 +173,7 @@ def generate_signals(
                 score=bull, atr=atr,
                 features=row.to_dict(),
             ))
-            skip_until = ts  # prevent re-entry same bar
+            next_allowed_idx = i + min_gap_bars   # enforce cooldown
 
         elif bear >= short_thresh:
             sl = entry + atr_mult_sl * atr
@@ -172,7 +184,7 @@ def generate_signals(
                 score=bear, atr=atr,
                 features=row.to_dict(),
             ))
-            skip_until = ts
+            next_allowed_idx = i + min_gap_bars   # enforce cooldown
 
     return signals
 

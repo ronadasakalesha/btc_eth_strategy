@@ -59,24 +59,42 @@ SKIP_WEEKEND = True            # Skip Saturday/Sunday entries
 
 # ─── Signal Confluence ────────────────────────────────────────────────────────
 # Minimum score (out of 1.0) to trigger a trade
-LONG_THRESHOLD = 0.60
-SHORT_THRESHOLD = 0.60
+LONG_THRESHOLD  = 0.58
+SHORT_THRESHOLD = 0.58
 
-# Feature weights — must sum to 1.0 (or will be normalised)
+# Minimum bars between consecutive signals (prevents over-trading)
+# 8 bars × 15m = 2 hours minimum between entries
+MIN_SIGNAL_GAP_BARS = 8
+
+# Feature weights — must sum to 1.0 (weights are auto-normalised).
+# ONLY include features that return values in {-1, 0, +1}.
+# DO NOT include raw-value features like atr_percentile (0–100) or rsi (0–100)
+# — those are used as gates/inputs inside their own modules, not scored here.
 FEATURE_WEIGHTS = {
-    "ema_stack":        0.15,
-    "adx_trending":     0.08,
-    "htf_bias":         0.12,
-    "supertrend":       0.05,
-    "atr_percentile":   0.06,
-    "bb_state":         0.05,
-    "rsi_regime":       0.08,
-    "macd_momentum":    0.06,
-    "cvd_divergence":   0.08,
-    "vwap_position":    0.10,
-    "order_block":      0.07,
-    "choch_bos":        0.06,
-    "oi_confirm":       0.04,
+    # Trend layer (34%)
+    "ema_stack":       0.15,
+    "adx_signal":      0.08,   # FIX: was "adx_trending" (wrong key — column is "adx_signal")
+    "htf_bias":        0.11,
+
+    # Volatility layer (8%)
+    "bb_state":        0.05,
+    "funding_bias":    0.03,
+
+    # Momentum layer (22%)
+    "rsi_regime":      0.08,
+    "rsi_divergence":  0.05,
+    "macd_momentum":   0.05,
+    "cvd_divergence":  0.04,
+
+    # Structure layer (28%)
+    "vwap_signal":     0.12,   # FIX: was "vwap_position" (wrong key — column is "vwap_signal")
+    "order_block":     0.09,
+    "choch_bos":       0.07,
+
+    # Cross-asset / OI (8%)
+    "oi_confirm":      0.04,
+    "btcd_gate":       0.02,
+    "ethbtc_momentum": 0.02,
 }
 
 # ─── Trade Management ─────────────────────────────────────────────────────────
